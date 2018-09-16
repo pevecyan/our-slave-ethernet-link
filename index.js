@@ -2,6 +2,8 @@ const express = require('express');
 const session = require('express-session');
 const bodyParser = require('body-parser');
 const DataStore = require('nedb-core');
+const Devices = require('./database/Devices');
+const voxiorRouter = require('./voxior');
 
 
 let usersDB = new DataStore({filename:'data/users.data', autoload:true});
