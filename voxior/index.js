@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const bodyParser = require('body-parser');
+const http = require('http');
+const axios = require('axios');
 
 //const Database = require('../database');
 const common = require('../common');
@@ -40,7 +42,7 @@ router.post('/login', (req, res)=>{
     let { username, password } = req.body;
     let passwordHash = common.passwordHash(password);
 
-    Users.ValidateUser(username, password)
+    Users.ValidateUser(username, passwordHash)
         .then(user=>{
             let token = common.getNewToken();
             tokens[token] = user;
@@ -61,16 +63,31 @@ router.post('/logout', (req, res)=>{
 
 
 router.get('/devices', (req, res)=>{
-    Database.Devices.getUserDevices(tokens[req.token])
+
+
+    Devices.GetDevices()
         .then(prepareDevices)
-        .then((preparedDevices)=>{
+        .then(preparedDevices=>{
             res.status(200).json(preparedDevices);
         })
+   
 });
 
 router.get('/devices/states/:id', (req, res)=>{
     const id = String(req.params.id);
     const query = req.query.query;
+
+    Devices.GetDevice(id)
+        .then((device)=>{
+            axios.get(`http://${device.url}/cm?cmnd=Power`)
+                .then(response=>{
+                    let power = response.data.POWER == 'ON';
+                    res.status(200).send(power);
+                })
+        })
+    return;
+    return res.status(200).send(String(false));
+
 
     Database.Devices.getById(id)
         .then((selectedDevice)=>{
@@ -95,7 +112,26 @@ router.post('/devices/:id', (req, res)=>{
     const id = String(req.params.id);
     const body = req.body;
 
-    if (tokens[req.token].devices.indexOf(id) === -1) {
+    Devices.GetDevice(id)
+        .then((device)=>{
+            
+            switch (body.action) {
+                case 'turnOn':
+                    http.get(`http://${device.url}/cm?cmnd=Power%20On`, (respo)=>{
+                        res.status(200).send(true);
+                    })
+                    break;
+                case 'turnOff':
+                    http.get(`http://${device.url}/cm?cmnd=Power%20Off`, (respo)=>{
+                        res.status(200).send(true);
+                    })
+                    break;
+                default:
+                    res.status(404).send();
+            }
+        })
+
+    /*if (tokens[req.token].devices.indexOf(id) === -1) {
         return res.status(400).send({ msg: 'Not user device' });
     }
 
@@ -120,7 +156,7 @@ router.post('/devices/:id', (req, res)=>{
             break;
         default:
             res.status(404).send();
-    }
+    }*/
 });
 
 
@@ -139,9 +175,12 @@ function prepareDevices (devicesD) {
                 'turnOn',
                 'turnOff'
             ],
-            id: device.id,
+            queryTypes: [
+                'power'
+            ],
+            id: device._id,
             name: device.name,
-            room: device.room,
+            room: 'Other',
             type: 'SWITCH'
         })
     })

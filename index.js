@@ -2,14 +2,13 @@ const express = require('express');
 const session = require('express-session');
 const bodyParser = require('body-parser');
 const DataStore = require('nedb-core');
-const Devices = require('./database/Devices');
 const voxiorRouter = require('./voxior');
+const common = require('./common');
+
+const Devices = require('./database/Devices');
+const Users = require('./database/Users');
 
 
-let usersDB = new DataStore({filename:'data/users.data', autoload:true});
-usersDB.update({username:'admin'}, {username:'admin', password:'admin'}, {upsert:true}, (err, data)=>{})
-
-let devicesDB = new DataStore({filename: 'data/devices.data', autoload:true});
 
 
 let app = express();
@@ -21,12 +20,15 @@ app.use(bodyParser.urlencoded({ extended: false }))
 // parse application/json
 app.use(bodyParser.json())
 
+app.use('/voxior/api', voxiorRouter);
+
 app.use('', (req,res,next)=>{
     if (req.session.user){
         if (req.path == '/login') res.redirect('/');
         else next();
     } else {
-        if (req.path == '/login') next();
+        if (req.path == '/login' ||req.path.startsWith("/voxior/api/")) 
+            next();
         else res.redirect('/login');
     }
 })
@@ -47,13 +49,17 @@ app.get('/login', (req,res)=>{
 })
 
 app.post('/login', (req,res)=>{
-    let {username, password} = req.body;
+    let { username, password } = req.body;
+    let passwordHash = common.passwordHash(password);
 
-    usersDB.find({username, password}, {}, (err,data)=>{
-        if (err || data.length == 0) res.redirect('/login');
-        req.session.user = data[0];
-        res.redirect('/');
-    })
+    Users.ValidateUser(username, passwordHash)
+        .then(user=>{
+           req.session.user = user;
+           res.redirect('/');
+        })
+        .catch(()=>{
+            res.redirect('/login');
+        })
 })
 
 app.get('/logout', (req,res)=>{
@@ -63,24 +69,22 @@ app.get('/logout', (req,res)=>{
 
 app.get('/', (req,res)=>{
 
-    devicesDB.find({}, {}, (err,data)=>{
-        let devices = '';
-        data.forEach(d=>{
-            devices+=`<div>${d.name} - ${d.url}</div>`;
-
+    Devices.GetDevices()
+        .then(devices=>{
+            let out = ''
+            devices.forEach(d=>{
+                out+=`<div>${d.name} - ${d.url}</div>`;
+            })
+            res.end(`
+                <html>
+                    <head></head>
+                    <body>
+                        ${out}
+                        <div><a href="devices/add">Add device</a></div>
+                    </body>
+                </html>
+            `)
         })
-        res.end(`
-            <html>
-                <head></head>
-                <body>
-                    ${devices}
-                    <div><a href="devices/add">Add device</a></div>
-                </body>
-            </html>
-        `)
-    });
-
-
     
 })
 
@@ -101,10 +105,14 @@ app.get('/devices/add', (req,res)=>{
 
 app.post('/devices/add', (req,res)=>{
     let {name, url} = req.body;
-    devicesDB.insert({name, url}, (err)=>{
-        console.error(err);
-    });
-    res.redirect('/');
+
+    Devices.InsertDevice(name, url)
+        .then(()=>{
+            res.redirect('/');
+        })
+        .catch(()=>{
+            res.redirect('/devices/add');
+        })
 })
 
 app.listen(8080, ()=>{
