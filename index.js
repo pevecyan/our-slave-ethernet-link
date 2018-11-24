@@ -8,6 +8,8 @@ const common = require('./common');
 const Devices = require('./database/Devices');
 const Users = require('./database/Users');
 
+const uuid = require('uuid');
+
 
 
 
@@ -106,7 +108,9 @@ app.get('/devices/add', (req,res)=>{
 app.post('/devices/add', (req,res)=>{
     let {name, url} = req.body;
 
-    Devices.InsertDevice(name, url)
+    let id = uuid.v4();
+
+    Devices.InsertDevice(name, url, id)
         .then(()=>{
             res.redirect('/');
         })
